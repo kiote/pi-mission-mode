@@ -1,0 +1,13 @@
+node_modules/
+*.tgz
+.DS_Store
+coverage/
+.pi/
+/mission.json
+/missions/
+/STATE.json
+/PROGRESS.md
+/mission-checkpoints/
+.env
+.env.*
+*.log

@@ -1,0 +1,24 @@
+{
+  "goal": "Wait for the external job identified as example-job-001, then write an evidence-based summary to docs/job-summary.md.",
+  "acceptance": [
+    "The summary identifies example-job-001 and reports its actual terminal status without claiming failure is success.",
+    "The summary explains what the observed result means and what remains uncertain."
+  ],
+  "constraints": [
+    "Do not launch or relaunch the external job. This example only observes a locally written result file.",
+    "Only write docs/job-summary.md and mission progress reports; do not publish anything."
+  ],
+  "instructions": "Call mission_wait with conditionId=job, input={path:results/example-job-001.json,jobId:example-job-001}, and a follow-up plan in summary. Finish the response without more tools. Once resumed, inspect the exact result and write the summary; a failed job is a terminal event to explain, not permission to retry it. The external producer must write the result file with jobId=example-job-001 and status=complete or failed. Use a unique path/identity for a different job.",
+  "progressFile": ".pi/external-job-mission/PROGRESS.md",
+  "checks": ["test -s docs/job-summary.md"],
+  "waiters": [
+    {
+      "id": "job",
+      "kind": "command",
+      "command": "node examples/probe-job.mjs",
+      "intervalSeconds": 60,
+      "timeoutSeconds": 10,
+      "maxErrors": 1
+    }
+  ]
+}

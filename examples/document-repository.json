@@ -1,0 +1,19 @@
+{
+  "goal": "Create docs/architecture.md explaining this repository's architecture for a new contributor.",
+  "acceptance": [
+    "The guide identifies the real entry points, main components, and their relationships with concrete file references.",
+    "The guide explains how to run the relevant tests and distinguishes verified facts from assumptions."
+  ],
+  "constraints": [
+    "Only create or update docs/architecture.md; do not change application code, publish anything, or discard unrelated work.",
+    "Do not expose credentials or include private data in the guide."
+  ],
+  "instructions": "Inspect the repository, write an evidence-based guide, check referenced paths, and report completion evidence. A nonempty-file check alone does not prove the guide is accurate.",
+  "progressFile": ".pi/architecture-mission/PROGRESS.md",
+  "checks": ["test -s docs/architecture.md"],
+  "limits": {
+    "maxMinutes": null,
+    "maxTurns": null,
+    "maxContinuations": null
+  }
+}
