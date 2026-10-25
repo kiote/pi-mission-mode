@@ -20,6 +20,8 @@ export function runCheck(
       return;
     }
     let output = "";
+    let stdout = "";
+    let stdoutTruncated = false;
     let killed = false;
     let finished = false;
     const child = spawn(
@@ -35,7 +37,15 @@ export function runCheck(
     const collect = (data: Buffer) => {
       output = (output + data.toString("utf8")).slice(-12000);
     };
-    child.stdout.on("data", collect);
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (data: string) => {
+      stdout += data;
+      if (stdout.length > 12000) {
+        stdoutTruncated = true;
+        stdout = stdout.slice(-12000);
+      }
+      collect(Buffer.from(data));
+    });
     child.stderr.on("data", collect);
     const kill = () => {
       if (finished) return;
@@ -69,7 +79,7 @@ export function runCheck(
       clearTimeout(timer);
       signal?.removeEventListener("abort", kill);
       if (error) output = `${output}\n${error.message}`.slice(-12000);
-      resolve({ command, code, killed, output });
+      resolve({ command, code, killed, output, stdout, stdoutTruncated });
     };
     child.on("error", (error) => finish(null, error));
     child.on("close", (code) => finish(code));

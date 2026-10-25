@@ -5,6 +5,7 @@
 - A completion gate uses `agent_before_settle` to continue unfinished work with actionable feedback.
 - Trusted verification commands check completion claims.
 - File, command, and scheduled-time waits yield without model polling and resume when the event is ready.
+- Managed external operations persist intent before launch, reconcile ambiguous outcomes, and verify exact operation artifacts before completion.
 - Progress checkpoints and significant-event digests survive in the Pi session and local files.
 - Optional limits, cooperative workspace ownership, and explicit pause/resume support longer tasks.
 
@@ -152,6 +153,23 @@ It finishes its response without more tools. The runtime saves `waiting`, yields
 
 On readiness, the wait is consumed and checkpointed **before** one follow-up resumes the model. Missed timer ticks after host sleep are not replayed as a burst. Use **interactive Pi or a long-lived RPC host**: `mission_wait` rejects one-shot print/JSON mode, which exits at settlement.
 
+## Investigate → launch → wait → reconcile → verify → continue
+
+Configure trusted `operations` adapters and use `mission_operation` for managed launches. Its workspace-wide ledger at `.pi/mission-operations.json` survives conversation branches and new missions:
+
+```text
+mission_operation({action:"launch", operation:"training", key:"project/run-v3", input:{dataset:"v3"}})
+mission_wait({conditionId:"training-ready", operationKey:"project/run-v3", input:{}, summary:"Inspect exact run, reconcile, verify artifacts"})
+mission_operation({action:"reconcile", key:"project/run-v3"})
+mission_operation({action:"verify", key:"project/run-v3"})
+```
+
+Intent is durably written before executing the approved launch command. A lost receipt, local timeout, or interruption requires reconciliation—not another launch. Retrying requires explicit adapter opt-in and fresh authoritative absence with no known remote operation ID. Bound waits save readiness separately from success; completion requires verified terminal outcomes and reruns operation verifiers after the mission checks.
+
+Adapters must validate exact account/job/artifact provenance and meaningful output properties. The controller checks response identity and lifecycle, not the truth of arbitrary verification evidence. These protections cover **managed operations only**, not arbitrary Bash/API launches or another workspace without the ledger. Never delete the ledger to force a retry.
+
+See the [adapter protocol and recovery guide](docs/operations.md), [local demo mission](examples/managed-job.json), and [demo adapter](examples/managed-job.mjs). Copy the demo adapter to `scripts/managed-job.mjs` in the target workspace before starting the demo mission.
+
 ## Boundaries are mission-specific
 
 **All five numeric limits default to `null` (disabled).** No hidden hour, turn, continuation, no-progress, or verification ceiling is imposed. Explicit positive integers enable limits:
@@ -174,11 +192,11 @@ Full field reference and defaults: [mission format](docs/mission-format.md).
 
 A cooperative claim at `.pi/mission-owner.json` prevents two mission instances from owning the same workspace. Starting/running/waiting retains it; pausing or finishing releases it. A live/reused PID is not stolen. Dead-PID claims can be recovered; a crash during the short `.guard` transaction fails closed and requires inspecting/removing only a verified stale guard.
 
-Session branch entries are authoritative. Global advisory snapshots also live under `~/.pi/agent/mission-checkpoints/` (or `PI_CODING_AGENT_DIR`). Different branches of one mission share that advisory filename. A foreign workspace/branch must not overwrite a live owner's progress.
+Session branch entries are authoritative for mission control state. Managed external actions have a separate workspace-wide operation ledger; branching does not undo them. Global advisory snapshots also live under `~/.pi/agent/mission-checkpoints/` (or `PI_CODING_AGENT_DIR`). Different branches of one mission share that advisory filename. A foreign workspace/branch must not overwrite a live owner's progress.
 
 **Reopening, reloading, or navigating a running/waiting/starting session restores it paused.** Explicit resume reruns startup reconciliation and rearms a saved wait instead of blindly repeating a launch/upload. If Pi crashes after consuming an event but before model delivery, recovery is paused, not an automatic replay.
 
-Keep the Mac/Linux host awake and Pi alive. This package is not a daemon, does not restart Pi after exit, and does not promise exact-once semantics for arbitrary external services. Domain adapters must retain exact operation IDs, reconcile ambiguous responses, and implement once-only write receipts. Manual pause does not mean remote work was cancelled.
+Keep the Mac/Linux host awake and Pi alive. This package is not a daemon, does not restart Pi after exit, and does not promise exact-once semantics for arbitrary external services. Managed adapters must use the persisted idempotency key/operation IDs, reconcile ambiguous responses, and implement service-specific idempotency and artifact verification. The local ledger cannot guarantee external exactly-once execution. Manual pause does not mean remote work was cancelled.
 
 ## Development
 

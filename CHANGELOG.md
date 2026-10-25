@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Optional managed operation adapters and `mission_operation` inspect/launch/reconcile/verify/retry tool.
+- Workspace-wide fsynced write-ahead operation ledger, stable idempotency identities, immutable inputs, saved receipts, and per-attempt history that session branches cannot undo.
+- Fail-closed reconciliation and identity checks; retry only with adapter opt-in and fresh authoritative absence without a known remote ID.
+- Operation-bound waits persist readiness separately from success; completion requires verified terminal outcomes and rechecks operation artifacts after mission checks.
+- Failed external outcomes may be verified as failed without implying overall mission success. Recovery/pause invalidates reconciliation freshness.
+- Fixed failed external-event delivery leaving a running mission/ownership claim after its wait was consumed.
+- Added adapter/recovery documentation, a local identity/hash-checked job example, real Pi managed-lifecycle integration, and failure-window tests including actual host SIGKILL before/after external effects.
+
 ## 0.1.0 — experimental initial release
 
 - Goal/acceptance/authority mission definitions and `/mission` controls.

@@ -20,6 +20,9 @@ export const stateModule = await jiti.import(join(root, "src/state.ts"));
 export const { runCheck } = await jiti.import(join(root, "src/verify.ts"));
 export const runtimeModule = await jiti.import(join(root, "src/runtime.ts"));
 export const { probeWait } = await jiti.import(join(root, "src/wait.ts"));
+export const operationsModule = await jiti.import(
+  join(root, "src/operations.ts"),
+);
 const { default: extension } = await jiti.import(join(root, "src/index.ts"));
 export const definition = (overrides = {}) => ({
   goal: "Create a small tested feature",
@@ -89,7 +92,10 @@ export async function harness(t, options = {}) {
     appendEntry: (customType, data) =>
       entries.push({ type: "custom", customType, data: structuredClone(data) }),
     sendUserMessage: (prompt) => prompts.push(prompt),
-    sendMessage: (msg) => messages.push(msg),
+    sendMessage: (msg, delivery) => {
+      options.onSendMessage?.(msg, delivery, entries);
+      messages.push(msg);
+    },
   };
   extension(api);
   const emit = async (name, event = {}) => {
@@ -142,6 +148,11 @@ export async function harness(t, options = {}) {
         systemPromptOptions: { sections: {} },
       });
       return file;
+    },
+    operation(params) {
+      return tools
+        .get("mission_operation")
+        .execute("operation", params, ctx.signal, undefined, ctx);
     },
     wait(params, mode = "rpc") {
       ctx.mode = mode;

@@ -15,6 +15,7 @@ A mission is a JSON object. Unknown fields are rejected. The definition is snaps
 | `checks`        | array of commands         | `[]`; no checks yields `review_required` on reported completion                             |
 | `startupChecks` | array of commands         | `[]`; trusted reconciliation before start/resume; failure pauses before prompting the model |
 | `waiters`       | array of named conditions | `[]`; configured external dependencies                                                      |
+| `operations`    | array of trusted adapters | `[]`; managed launch/reconcile/verify commands; see [operation protocol](operations.md)     |
 | `limits`        | object                    | All omitted/null numeric limits are disabled                                                |
 | `policies`      | object                    | `{"noProgress":"reassess"}`                                                                 |
 
@@ -118,7 +119,7 @@ Call `mission_wait` with `input.until` as an ISO timestamp (prefer an explicit t
 
 ## Model tools
 
-Both tools are active only during mission work. Explicit tool allow/deny settings must permit them.
+All three tools (`mission_report`, `mission_wait`, `mission_operation`) are active only during mission work. Explicit tool allow/deny settings must permit them.
 
 ### `mission_report`
 
@@ -146,10 +147,13 @@ Do not call more tools after reporting complete; later calls invalidate the clai
 ```json
 {
   "conditionId": "job",
+  "operationKey": "project/run-v3",
   "input": { "jobId": "exact-operation-123" },
   "summary": "Inspect exact-operation-123, verify its artifacts, then choose the next step"
 }
 ```
+
+`operationKey` is optional for legacy/general waits; use it to bind a managed operation. The record must belong to this mission and have a known remote ID. Command probes then also receive ledger-derived `PI_MISSION_OPERATION`. Readiness invalidates operation verification; reconcile and verify before claiming completion. See [managed operations](operations.md) for adapter configuration, launch/retry gates, and the durable ledger.
 
 The condition must already exist in the mission definition. Input must be an object (up to 20,000 JSON characters). Finish the response without more tool calls so the runtime can checkpoint and yield. The saved wait contains exact input and follow-up plan, so explicit recovery can rearm it without repeating a launch.
 

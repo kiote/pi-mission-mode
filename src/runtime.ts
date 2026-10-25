@@ -11,6 +11,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { State } from "./state.ts";
+import type { OperationRecord } from "./operations.ts";
 
 export function atomicWrite(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -137,7 +138,11 @@ export function progressPaths(s: State): {
   );
   return { progress, snapshot: join(dirname(progress), "STATE.json") };
 }
-export function publishProgress(s: State, snapshot: unknown): void {
+export function publishProgress(
+  s: State,
+  snapshot: unknown,
+  operations: OperationRecord[] = [],
+): void {
   const paths = progressPaths(s);
   const lines = [
     `# Mission progress`,
@@ -164,6 +169,13 @@ export function publishProgress(s: State, snapshot: unknown): void {
     "",
     "## Acceptance evidence (agent-reported)",
     ...(s.report?.evidence || []).map((e) => `- ${e.criterion}: ${e.evidence}`),
+    "",
+    "## Managed external operations",
+    "Ledger: .pi/mission-operations.json (workspace-wide; session branches do not undo external actions)",
+    ...operations.map(
+      (r) =>
+        `- ${r.key}: ${r.status}; attempt ${r.attempts.at(-1)!.id}; remote ID ${r.attempts.at(-1)!.operationId || "unknown"}; ${r.verification ? "outcome verified (fresh reconciliation required after recovery)" : "not verified"}`,
+    ),
     "",
     "## Latest verification",
     ...s.checks.map(

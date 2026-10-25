@@ -13,6 +13,7 @@ export async function probeWait(
   wait: WaitState,
   cwd: string,
   signal: AbortSignal,
+  env?: Record<string, string>,
 ): Promise<Observation> {
   if (signal.aborted) return { status: "error", detail: "Probe cancelled" };
   if (
@@ -75,6 +76,7 @@ export async function probeWait(
     condition.timeoutSeconds * 1000,
     signal,
     {
+      ...env,
       PI_MISSION_WAIT_INPUT: JSON.stringify(wait.input),
     },
   );

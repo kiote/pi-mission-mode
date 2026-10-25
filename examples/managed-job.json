@@ -1,0 +1,37 @@
+{
+  "goal": "Run and verify a local managed job producing the value 42",
+  "acceptance": [
+    "The exact launched job has a verified terminal outcome and its artifact contains value 42"
+  ],
+  "constraints": [
+    "Use mission_operation for the demo job; never launch via another tool or change keys to bypass recovery",
+    "Use stable key demo/value-42; bind mission_wait with operationKey demo/value-42"
+  ],
+  "instructions": "Inspect the managed ledger first. Launch adapter demo with key demo/value-42 and input {value:42} only if no intent exists. Otherwise reconcile the existing record. Wait with conditionId demo and operationKey demo/value-42, then reconcile and verify. Report complete only when the artifact satisfies acceptance.",
+  "operations": [
+    {
+      "id": "demo",
+      "launch": "node scripts/managed-job.mjs launch",
+      "reconcile": "node scripts/managed-job.mjs reconcile",
+      "verify": "node scripts/managed-job.mjs verify",
+      "timeoutSeconds": 30
+    }
+  ],
+  "waiters": [
+    {
+      "id": "demo",
+      "kind": "command",
+      "command": "node scripts/managed-job.mjs probe",
+      "intervalSeconds": 1,
+      "timeoutSeconds": 5
+    }
+  ],
+  "checks": [
+    "node -e 'const fs=require(\"node:fs\"); const r=JSON.parse(fs.readFileSync(\".pi/mission-operations.json\")).records.find(r=>r.key===\"demo/value-42\"); const j=JSON.parse(fs.readFileSync(r.attempts.at(-1).receipt.file)); if(j.key!==r.key || j.operationId!==r.attempts.at(-1).operationId || j.status!==\"succeeded\" || j.result.value!==42) process.exit(1)'"
+  ],
+  "limits": {
+    "maxMinutes": 10,
+    "maxTurns": 100,
+    "maxContinuations": 20
+  }
+}

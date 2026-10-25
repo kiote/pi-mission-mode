@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { parseOperations, type OperationDefinition } from "./operations.ts";
 
 export interface Waiter {
   id: string;
@@ -14,6 +15,7 @@ export interface Waiter {
 }
 export interface WaitState {
   conditionId: string;
+  operationKey?: string;
   input: Record<string, unknown>;
   summary: string;
   startedAt: number;
@@ -27,6 +29,7 @@ export interface Mission {
   instructions?: string;
   progressFile?: string;
   waiters: Waiter[];
+  operations: OperationDefinition[];
   acceptance: string[];
   constraints: string[];
   checks: { command: string; timeoutSeconds?: number | null }[];
@@ -63,6 +66,8 @@ export interface CheckResult {
   code: number | null;
   output: string;
   killed: boolean;
+  stdout?: string;
+  stdoutTruncated?: boolean;
 }
 export interface State {
   version: 1;
@@ -161,9 +166,10 @@ export function approvalSummary(mission: Mission): string {
     unboundedWarning(mission),
     `Startup commands (executed before the model):\n${commands(mission.startupChecks)}`,
     `Completion commands:\n${commands(mission.checks)}`,
+    `Operation adapters (trusted executable commands):\n${mission.operations.map((o) => `${o.id}: launch=${o.launch}; reconcile=${o.reconcile}; verify=${o.verify}; timeout=${o.timeoutSeconds}s; retryAfterAbsent=${o.retryAfterAbsent}`).join("\n") || "None"}`,
     `Wait conditions:\n${mission.waiters.map((w) => `${w.id}: ${w.kind === "command" ? w.command : w.kind === "file" ? w.path : "scheduled time"}${w.kind === "command" ? ` (probe timeout: ${w.timeoutSeconds} seconds)` : ""}`).join("\n") || "None"}`,
     `Progress file: ${mission.progressFile || "workspace .pi/missions/<id>/PROGRESS.md"}`,
-    "Commands run with Pi's permissions and bypass tool-call permission gates. Read-only behaviour of startup/probe commands is NOT enforced. Constraints are instructions, NOT a sandbox. Only approve trusted mission definitions and commands.",
+    "Commands run with Pi's permissions and bypass tool-call permission gates. Read-only behaviour of startup/probe/reconcile/verify commands is NOT enforced. Constraints are instructions, NOT a sandbox. Only approve trusted mission definitions and commands.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -184,6 +190,7 @@ export function parseMission(value: unknown): Mission {
     "progressFile",
     "waiters",
     "startupChecks",
+    "operations",
   ];
   for (const k of Object.keys(v))
     if (!allowed.includes(k)) throw new Error(`Unknown mission field: ${k}`);
@@ -335,6 +342,7 @@ export function parseMission(value: unknown): Mission {
   return {
     ...optionalText,
     waiters,
+    operations: parseOperations(v.operations ?? []),
     startupChecks,
     goal: v.goal.trim(),
     acceptance: strings(v.acceptance, "acceptance", true),
@@ -449,7 +457,11 @@ Working policy:
 - Make reasonable reversible decisions; escalate only missing access, conflicting requirements, or decisions outside your authority.
 - Do not edit the mission definition, weaken tests, or manipulate verification to claim success.
 - Use mission_report to checkpoint progress. Mark significant=true for an important digest; include nextAction and concrete facts/IDs in the summary. Routine checkpoints do not send digests.
+- Managed external adapters: ${s.mission.operations.map((o) => o.id).join(", ") || "none configured"}. Use mission_operation launch with a stable business key and immutable input BEFORE any managed external write. Do not bypass it with bash or change keys to evade duplicate protection.
+- A saved launch intent or timeout is NOT permission to launch again. Use mission_operation reconcile to discover the exact operation by its idempotency key/receipt; verify its terminal outcome and artifacts with mission_operation verify. Readiness is not success. Failed outcomes may be verified as failed; mission acceptance still determines overall success.
+- Managed retries require retryAfterAbsent opt-in and fresh authoritative absence without a known operation ID. Reconcile again after pause/recovery; never infer cancellation from a timeout. Operation records survive session branches and new missions.
 - For remote jobs, quota renewal, or other external dependencies use mission_wait with a configured conditionId and exact operation identities in input. It yields without model polling and resumes when the deterministic probe is ready. Do not wait by repeatedly calling the model or a long blocking shell command solely to poll.
+- Bind waits for managed operations with operationKey; probes receive PI_MISSION_OPERATION from the ledger. Do not substitute a latest-job lookup or a guessed artifact. After readiness reconcile and verify, then choose the next justified action.
 - Do not perform more tool calls after mission_wait; finish the response so the runtime can enter waiting. Reconcile existing operations before retrying any external write.
 - Before finishing the mission, report complete with evidence for EVERY acceptance criterion, or blocked with a precise blocker.
 - Report evidence is a claim; configured checks run independently after your completion report.
@@ -474,6 +486,7 @@ export const TEMPLATE = {
     "Do not discard unrelated work or weaken existing tests",
   ],
   checks: [],
+  operations: [],
   limits: { ...DEFAULT_LIMITS },
   policies: { noProgress: "reassess" },
 };
