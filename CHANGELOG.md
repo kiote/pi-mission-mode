@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows (experimental): mission checks no longer fail with `spawn /bin/bash ENOENT`. They use `PI_MISSION_BASH` or Git for Windows bash, put its directory first on `PATH`, and stop timed-out checks with `taskkill /T`.
 - Optional managed operation adapters and `mission_operation` inspect/launch/reconcile/verify/retry tool.
 - Workspace-wide fsynced write-ahead operation ledger, stable idempotency identities, immutable inputs, saved receipts, and per-attempt history that session branches cannot undo.
 - Fail-closed reconciliation and identity checks; retry only with adapter opt-in and fresh authoritative absence without a known remote ID.

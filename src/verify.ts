@@ -1,7 +1,63 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { win32 } from "node:path";
 import type { CheckResult } from "./state.ts";
 
-/** Trusted mission commands only. POSIX process groups let timeout/abort kill ordinary descendants too. */
+const isWindows = process.platform === "win32";
+
+/**
+ * Bash used for mission commands. POSIX: `/bin/bash`. Windows has no `/bin/bash`,
+ * so use `PI_MISSION_BASH`, else Git for Windows bash (machine install, per-user
+ * install, or the install that owns `git.exe` on PATH). Never a bare `bash.exe`:
+ * on Windows that can resolve to WSL's `System32\bash.exe`.
+ */
+export function resolveBash(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  exists: (path: string) => boolean = existsSync,
+): string | undefined {
+  if (platform !== "win32") return "/bin/bash";
+  if (env.PI_MISSION_BASH)
+    return exists(env.PI_MISSION_BASH) ? env.PI_MISSION_BASH : undefined;
+  const roots: string[] = [];
+  for (const base of [
+    env.ProgramFiles,
+    env.ProgramW6432,
+    env["ProgramFiles(x86)"],
+  ]) {
+    if (base) roots.push(win32.join(base, "Git"));
+  }
+  if (env.LOCALAPPDATA)
+    roots.push(win32.join(env.LOCALAPPDATA, "Programs", "Git"));
+  const pathKey = Object.keys(env).find((k) => k.toUpperCase() === "PATH");
+  for (const dir of (pathKey ? env[pathKey] : "")?.split(";") ?? []) {
+    if (!dir || !exists(win32.join(dir, "git.exe"))) continue;
+    // git.exe lives in <root>\cmd, <root>\bin, or <root>\mingw64\bin.
+    roots.push(win32.dirname(dir), win32.dirname(win32.dirname(dir)));
+  }
+  for (const root of roots) {
+    for (const rel of ["usr\\bin\\bash.exe", "bin\\bash.exe"]) {
+      const candidate = win32.join(root, rel);
+      if (exists(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+/** On Windows, put the bash directory (Git usr\bin: grep, sed, sleep) first in PATH; the Windows PATH often lacks it. */
+function childEnv(
+  bash: string,
+  env?: Record<string, string>,
+): NodeJS.ProcessEnv {
+  if (!isWindows) return env ? { ...process.env, ...env } : process.env;
+  const merged: NodeJS.ProcessEnv = { ...process.env, ...env };
+  const key =
+    Object.keys(merged).find((k) => k.toUpperCase() === "PATH") ?? "Path";
+  merged[key] = `${win32.dirname(bash)};${merged[key] ?? ""}`;
+  return merged;
+}
+
+/** Trusted mission commands only. POSIX process groups (Windows: taskkill /T) let timeout/abort kill ordinary descendants too. */
 export function runCheck(
   command: string,
   cwd: string,
@@ -19,19 +75,32 @@ export function runCheck(
       });
       return;
     }
+    const bash = resolveBash();
+    if (!bash) {
+      resolve({
+        command,
+        code: null,
+        killed: false,
+        output:
+          "No bash found for mission checks. Install Git for Windows or set PI_MISSION_BASH to the full path of bash.exe.",
+      });
+      return;
+    }
     let output = "";
     let stdout = "";
     let stdoutTruncated = false;
     let killed = false;
     let finished = false;
     const child = spawn(
-      "/bin/bash",
+      bash,
       ["--noprofile", "--norc", "-o", "pipefail", "-c", command],
       {
         cwd,
-        detached: true,
+        // Windows has no POSIX process groups; taskkill /T stops the tree instead.
+        detached: !isWindows,
+        windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        env: env ? { ...process.env, ...env } : process.env,
+        env: childEnv(bash, env),
       },
     );
     const collect = (data: Buffer) => {
@@ -51,6 +120,12 @@ export function runCheck(
       if (finished) return;
       killed = true;
       try {
+        if (isWindows && child.pid) {
+          spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+            windowsHide: true,
+          });
+          return;
+        }
         if (child.pid) process.kill(-child.pid, "SIGKILL");
       } catch {
         child.kill("SIGKILL");
