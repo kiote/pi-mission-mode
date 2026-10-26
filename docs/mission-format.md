@@ -38,6 +38,8 @@ Adapt commands to the actual project. An omitted command timeout inherits `limit
 
 All commands run through `/bin/bash` with `pipefail`, no startup files, ignored stdin, inherited environment, and captured output capped at the last 12,000 characters. They bypass `tool_call` gates. Timeout/abort kills the ordinary process group; deliberately detached descendants can escape. Startup/probe commands are expected to be read-only, but the subprocess runner does not enforce that.
 
+On Windows (experimental), commands run through `PI_MISSION_BASH` if set, else Git for Windows bash (`%ProgramFiles%\Git`, `%LOCALAPPDATA%\Programs\Git`, or the install that owns `git.exe` on `PATH`). The bash directory is prepended to `PATH` so `grep`, `sed`, and `sleep` resolve, and timeout/abort uses `taskkill /T`. A bare `bash.exe` (which can be WSL) is never used; if no bash is found the check fails with a message.
+
 ## Limits and policies
 
 ```json

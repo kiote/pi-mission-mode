@@ -13,7 +13,7 @@
 
 ## Install
 
-Requires **Node.js 22.19+**, **macOS or Linux**, `/bin/bash`, and a Pi version with settlement boundary hooks. Tested with **`@earendil-works/pi-coding-agent` 1.4.0**. Older Pi versions and Windows are not supported by this release.
+Requires **Node.js 22.19+**, **macOS or Linux**, `/bin/bash`, and a Pi version with settlement boundary hooks. Tested with **`@earendil-works/pi-coding-agent` 1.4.0**. Older Pi versions and Windows are not supported by this release. Experimental: on Windows, mission checks run through Git for Windows bash (found automatically, or set `PI_MISSION_BASH` to the full path of `bash.exe`).
 
 ```bash
 pi install git:github.com/kiote/pi-mission-mode@v0.1.0
