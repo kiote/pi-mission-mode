@@ -17,7 +17,7 @@ A mission is a JSON object. Unknown fields are rejected. The definition is snaps
 | `waiters`       | array of named conditions | `[]`; configured external dependencies                                                      |
 | `operations`    | array of trusted adapters | `[]`; managed launch/reconcile/verify commands; see [operation protocol](operations.md)     |
 | `limits`        | object                    | All omitted/null numeric limits are disabled                                                |
-| `policies`      | object                    | `{"noProgress":"reassess"}`                                                                 |
+| `policies`      | object                    | `{"noProgress":"reassess","selfReview":true}`                                               |
 
 Commands may be strings or objects:
 
@@ -63,9 +63,20 @@ Each numeric field accepts a positive safe integer or `null`. Durations must als
 - `maxConsecutiveNoProgress` enables a heuristic based on novel tool input/results or increased acceptance-evidence coverage. Summary wording alone is not progress; varying tool output can fool the heuristic.
 - `checkTimeoutSeconds` is the optional inherited command timeout, not an external-job deadline.
 
+`policies.selfReview` (default `true`) adds one review cycle per mission. After the first `complete` report with full evidence, the runtime clears the report and asks the agent to reread its deliverables for its reader: replace vague claims with exact names, IDs, links, numbers, and dates (or state that a fact is unknown), remove padding, and check each claim against its sources. Then the agent reports `complete` again, and the configured checks run. The review is skipped when no continuation budget remains. Set `false` for missions whose output a check fully proves, such as a code change with tests.
+
 With a configured no-progress threshold, `reassess` adds feedback at each threshold multiple without stopping or declaring a human blocker. Explicit `pause` or `stop` changes that action. With a null threshold, none is triggered.
 
 Runtime/turn/continuation counters survive pause/resume. Explicit resume clears the no-progress streak and stale completion report, not the configured budget counters. A final successful verification may complete even if no continuation budget remains. No cost cap is implemented.
+
+## Acceptance criteria for documents and answers
+
+A check can prove structure (headings, row counts, length) but not that a text is specific. Mechanical minimums can make an agent pad a text to reach a count. For a document or an answer:
+
+- Give a maximum length, and treat minimum counts as floors.
+- Ask for exact items, for example "each access item names the group and the link where a person requests it", not "covers access".
+- Say what to write when a source has no exact fact ("unknown; ask <role>").
+- Keep `selfReview` on.
 
 ## Wait conditions
 

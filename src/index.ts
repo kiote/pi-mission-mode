@@ -27,6 +27,7 @@ import {
   missionPrompt,
   parseMission,
   remaining,
+  SELF_REVIEW,
   TEMPLATE,
   transition,
   unboundedWarning,
@@ -960,6 +961,17 @@ export default function missionExtension(pi: ExtensionAPI) {
         } else if (ledger().completionIssues(state.id).length) {
           feedback = `Managed operations are not yet reconciled and verified:\n${ledger().completionIssues(state.id).join("\n")}\nReadiness alone is not success. Use mission_operation reconcile then verify before reporting complete.`;
           state.report = undefined;
+        } else if (
+          state.mission.policies.selfReview === true &&
+          !state.selfReviewed &&
+          !continuationLimitReached(state)
+        ) {
+          // One self-review cycle per mission: mechanical checks pass vague or
+          // padded deliverables, so ask the agent to reread them first.
+          state.selfReviewed = true;
+          state.report = undefined;
+          recordDigest("self_review", "Self-review requested before checks");
+          feedback = SELF_REVIEW;
         } else if (!state.mission.checks.length) {
           end(
             ctx,

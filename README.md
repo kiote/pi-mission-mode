@@ -182,6 +182,8 @@ See the [adapter protocol and recovery guide](docs/operations.md), [local demo m
 
 `policies.noProgress` defaults to **`reassess`**, not stop. Explicit `pause` or `stop` policies are available. Changing command output can fool the progress heuristic. A configured `maxTurns` is strict and can stop the response that was about to finish.
 
+`policies.selfReview` defaults to **`true`**: the first complete report starts one review cycle in which the agent rereads its deliverables, replaces vague claims with exact facts, and removes padding before the checks run. Set it to `false` when checks fully prove the result.
+
 Checks can override the default timeout individually. An explicit `null` means no command timeout, while a configured mission runtime ceiling still applies to completion checks. Startup checks use their own/default command timeout. Pause/stop still cancel a check with no timeout. Numeric budgets are cumulative across pause/resume.
 
 Probe intervals/timeouts/error counts are separate operational settings, not mission-duration ceilings. **There is no dollar/token spending cap or domain-resource accounting.** Use application-specific quota/approval controls and isolation when needed.
