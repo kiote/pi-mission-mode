@@ -41,7 +41,7 @@ export interface Mission {
     maxConsecutiveNoProgress: number | null;
     checkTimeoutSeconds: number | null;
   };
-  policies: { noProgress: "reassess" | "pause" | "stop" };
+  policies: { noProgress: "reassess" | "pause" | "stop"; selfReview: boolean };
 }
 export type Status =
   | "starting"
@@ -87,6 +87,8 @@ export interface State {
   cycleActivity: string[];
   bestCoverage: number;
   report?: Report;
+  /** Set when the one-time deliverable self-review was requested. */
+  selfReviewed?: boolean;
   checks: CheckResult[];
   wait?: WaitState;
   pendingWait?: WaitState;
@@ -163,6 +165,7 @@ export function approvalSummary(mission: Mission): string {
     `Goal: ${mission.goal}`,
     `Limits (null = disabled): ${JSON.stringify(mission.limits)}`,
     `No-progress policy: ${mission.policies.noProgress}`,
+    `Self-review before checks: ${mission.policies.selfReview ? "on" : "off"}`,
     unboundedWarning(mission),
     `Startup commands (executed before the model):\n${commands(mission.startupChecks)}`,
     `Completion commands:\n${commands(mission.checks)}`,
@@ -213,11 +216,15 @@ export function parseMission(value: unknown): Mission {
   if (!policy || typeof policy !== "object" || Array.isArray(policy))
     throw new Error("policies must be an object");
   for (const k of Object.keys(policy))
-    if (k !== "noProgress") throw new Error(`Unknown policy: ${k}`);
+    if (k !== "noProgress" && k !== "selfReview")
+      throw new Error(`Unknown policy: ${k}`);
   const noProgress =
     (policy as Record<string, unknown>).noProgress ?? "reassess";
   if (!["reassess", "pause", "stop"].includes(noProgress as string))
     throw new Error("policies.noProgress must be reassess, pause, or stop");
+  const selfReview = (policy as Record<string, unknown>).selfReview ?? true;
+  if (typeof selfReview !== "boolean")
+    throw new Error("policies.selfReview must be true or false");
   const parseChecks = (rawChecks: unknown) => {
     if (!Array.isArray(rawChecks) || rawChecks.length > 100)
       throw new Error("checks must be an array of at most 100 commands");
@@ -349,7 +356,10 @@ export function parseMission(value: unknown): Mission {
     constraints: strings(v.constraints ?? [], "constraints"),
     checks,
     limits,
-    policies: { noProgress: noProgress as Mission["policies"]["noProgress"] },
+    policies: {
+      noProgress: noProgress as Mission["policies"]["noProgress"],
+      selfReview,
+    },
   };
 }
 export function createState(
@@ -463,6 +473,7 @@ Working policy:
 - For remote jobs, quota renewal, or other external dependencies use mission_wait with a configured conditionId and exact operation identities in input. It yields without model polling and resumes when the deterministic probe is ready. Do not wait by repeatedly calling the model or a long blocking shell command solely to poll.
 - Bind waits for managed operations with operationKey; probes receive PI_MISSION_OPERATION from the ledger. Do not substitute a latest-job lookup or a guessed artifact. After readiness reconcile and verify, then choose the next justified action.
 - Do not perform more tool calls after mission_wait; finish the response so the runtime can enter waiting. Reconcile existing operations before retrying any external write.
+- Deliverable quality: write for the reader that the goal names. Each claim names the exact item (name, ID, path, link, number with unit and date, person and date) or says that it is unknown and who can answer. Do not write general statements that the reader cannot act on. Prefer the shortest text that meets the acceptance criteria; minimum counts are floors, not targets.${s.mission.policies.selfReview === true ? "\n- Your first complete report starts one self-review cycle before the configured checks run. Expect it; it is not a failure." : ""}
 - Before finishing the mission, report complete with evidence for EVERY acceptance criterion, or blocked with a precise blocker.
 - Report evidence is a claim; configured checks run independently after your completion report.
 - After a complete report, do not call other tools; further tool calls invalidate the report.
@@ -488,5 +499,8 @@ export const TEMPLATE = {
   checks: [],
   operations: [],
   limits: { ...DEFAULT_LIMITS },
-  policies: { noProgress: "reassess" },
+  policies: { noProgress: "reassess", selfReview: true },
 };
+/** One-time feedback after the first complete report, before checks run. */
+export const SELF_REVIEW =
+  "SELF-REVIEW (one time, before the configured checks run). Your completion report was received and cleared; it is not accepted yet. Reread each deliverable you produced (files, messages, answers) as the reader named in the goal would read it. Then fix it:\n1. Replace every general or vague claim with the exact fact: name, ID, path, link, number with unit and date, or person and date. Where a reader must get something (access, approval, data), say exactly what and where to request it. If your sources do not give the exact fact, write that it is unknown and who can answer, instead of a general statement.\n2. Delete text that adds no new fact or needed action: restated goals, generic impact statements, filler. Minimum counts in the acceptance criteria are floors, not targets; remove weak items that only reach a count.\n3. Check each claim against your sources. Remove or mark claims you did not verify.\n4. Confirm the deliverable directly answers the goal and every acceptance criterion.\nThen call mission_report with status complete again, with evidence for every criterion. If nothing needed a change, say what you checked.";

@@ -288,3 +288,57 @@ test("verification uses pipefail, bounded output, timeout, abort and correct cwd
   controller.abort();
   assert.equal((await pending).killed, true);
 });
+test("self-review defaults on, rejects non-boolean values, and adds quality rules to the prompt", () => {
+  const on = s.parseMission({ ...definition(), policies: {} });
+  assert.equal(on.policies.selfReview, true);
+  assert.equal(s.parseMission(definition()).policies.selfReview, false);
+  assert.throws(() =>
+    s.parseMission(definition({ policies: { selfReview: "yes" } })),
+  );
+  const prompt = s.missionPrompt(s.createState(on, "f", "w"));
+  assert.match(prompt, /Deliverable quality/);
+  assert.match(prompt, /one self-review cycle/);
+  assert.match(s.approvalSummary(on), /Self-review before checks: on/);
+});
+test("first complete report triggers one self-review before checks run", async (t) => {
+  const h = await harness(t);
+  await h.start(definition({ policies: { selfReview: true } }));
+  await h.report();
+  const review = await h.settle();
+  assert.equal(review.continue, true);
+  assert.match(review.entries.at(-1).content, /SELF-REVIEW/);
+  assert.match(review.entries.at(-1).content, /vague claim/);
+  assert.equal(h.latest().status, "running");
+  assert.equal(h.latest().checks.length, 0);
+  assert.equal(h.latest().report, undefined);
+  assert.equal(h.latest().selfReviewed, true);
+  await h.report();
+  const done = await h.settle();
+  assert.equal(done.continue, false);
+  assert.equal(h.latest().status, "completed");
+  assert.equal(h.latest().checks[0].output, "verified");
+});
+test("self-review also runs before human review when no checks exist", async (t) => {
+  const h = await harness(t);
+  await h.start(definition({ checks: [], policies: { selfReview: true } }));
+  await h.report();
+  assert.match((await h.settle()).entries.at(-1).content, /SELF-REVIEW/);
+  await h.report();
+  assert.equal((await h.settle()).continue, false);
+  assert.equal(h.latest().status, "review_required");
+});
+test("self-review is skipped when no continuation budget remains", async (t) => {
+  const h = await harness(t);
+  await h.start(
+    definition({
+      limits: { maxContinuations: 1 },
+      policies: { selfReview: true },
+    }),
+  );
+  await h.settle();
+  assert.equal(h.latest().continuations, 1);
+  await h.report();
+  assert.equal((await h.settle()).continue, false);
+  assert.equal(h.latest().status, "completed");
+  assert.equal(h.latest().selfReviewed, undefined);
+});

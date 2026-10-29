@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Deliverable quality: the mission prompt asks for exact facts (names, IDs, links, numbers with dates) instead of general claims, and treats minimum counts as floors. New `policies.selfReview` (default `true`) runs one review cycle after the first complete report and before checks, so that the agent removes vague claims and padding. Docs add guidance for acceptance criteria of documents and answers.
+
 - Windows (experimental): mission checks no longer fail with `spawn /bin/bash ENOENT`. They use `PI_MISSION_BASH` or Git for Windows bash, put its directory first on `PATH`, and stop timed-out checks with `taskkill /T`.
 - Optional managed operation adapters and `mission_operation` inspect/launch/reconcile/verify/retry tool.
 - Workspace-wide fsynced write-ahead operation ledger, stable idempotency identities, immutable inputs, saved receipts, and per-attempt history that session branches cannot undo.

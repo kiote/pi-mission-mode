@@ -24,7 +24,7 @@ export const operationsModule = await jiti.import(
   join(root, "src/operations.ts"),
 );
 const { default: extension } = await jiti.import(join(root, "src/index.ts"));
-export const definition = (overrides = {}) => ({
+export const definition = ({ policies, ...overrides } = {}) => ({
   goal: "Create a small tested feature",
   acceptance: ["Feature works"],
   constraints: ["Do not deploy"],
@@ -37,6 +37,8 @@ export const definition = (overrides = {}) => ({
     checkTimeoutSeconds: 1,
   },
   ...overrides,
+  // Most tests exercise the check gate directly; self-review has its own tests.
+  policies: { selfReview: false, ...policies },
 });
 
 export async function harness(t, options = {}) {

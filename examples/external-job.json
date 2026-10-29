@@ -20,5 +20,8 @@
       "timeoutSeconds": 10,
       "maxErrors": 1
     }
-  ]
+  ],
+  "policies": {
+    "selfReview": false
+  }
 }
