@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optional `advisory` completion checks return output for one correction or rebuttal round. Mandatory verification still runs after a fresh completion report. Review errors pause the mission; advisory-only missions require human review. Results and the one-time marker survive pause/resume.
+
 - Deliverable quality: the mission prompt asks for exact facts (names, IDs, links, numbers with dates) instead of general claims, and treats minimum counts as floors. New `policies.selfReview` (default `true`) runs one review cycle after the first complete report and before checks, so that the agent removes vague claims and padding. Docs add guidance for acceptance criteria of documents and answers.
 
 - Windows (experimental): mission checks no longer fail with `spawn /bin/bash ENOENT`. They use `PI_MISSION_BASH` or Git for Windows bash, put its directory first on `PATH`, and stop timed-out checks with `taskkill /T`.

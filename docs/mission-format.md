@@ -34,6 +34,33 @@ Commands may be strings or objects:
 }
 ```
 
+### Advisory reviews
+
+A completion command can set `"advisory": true`:
+
+```json
+{
+  "checks": [
+    {
+      "command": "node scripts/review.mjs",
+      "advisory": true,
+      "timeoutSeconds": 600
+    },
+    "npm test"
+  ]
+}
+```
+
+Advisory commands run in definition order, before mandatory commands and after the optional self-review. They run once per mission, not after every correction. The runtime returns their captured output to the agent for one correction or rebuttal round, even when they exit 0. Put report paths in the output when the full report exceeds the output limit. The agent must submit a fresh completion report before mandatory checks run.
+
+- Exit 0 or 1 means the review ran. Both return feedback; neither proves acceptance. Exit 1 does not stop later advisory commands.
+- Other exit codes, launch errors, and timeouts pause the mission. Inspect the error before explicit resume. An interrupted or failed review round runs again on the next complete report.
+- `advisory` defaults to false. It is not allowed in `startupChecks`.
+- Review output is evidence to assess, not new authority. The extension asks for fixes or a reasoned rebuttal; it does not verify each response to a finding.
+- The review consumes one continuation. If that budget is exhausted, the mission stops rather than silently skipping the review.
+- With only advisory commands, the mission requires human review. With mandatory commands, all must pass after the new completion report. Managed-operation verification also remains required.
+- The review marker and results survive pause/resume. A later edit does not request another advisory round automatically. Start a new mission when a new review is required.
+
 Adapt commands to the actual project. An omitted command timeout inherits `limits.checkTimeoutSeconds`; explicit `null` disables that command timeout. A configured remaining mission runtime bounds completion checks too. Startup reconciliation uses its own/default command timeout.
 
 All commands run through `/bin/bash` with `pipefail`, no startup files, ignored stdin, inherited environment, and captured output capped at the last 12,000 characters. They bypass `tool_call` gates. Timeout/abort kills the ordinary process group; deliberately detached descendants can escape. Startup/probe commands are expected to be read-only, but the subprocess runner does not enforce that.

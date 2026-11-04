@@ -955,6 +955,11 @@ export default function missionExtension(pi: ExtensionAPI) {
       }
       let feedback =
         "You stopped before verified completion. Continue with the next concrete step. Before finishing use mission_report: complete with evidence for every criterion, or blocked with a precise blocker.";
+      const reviewing =
+        !state.advisoryReviewed && state.mission.checks.some((c) => c.advisory);
+      const selectedChecks = state.mission.checks.filter((c) =>
+        reviewing ? c.advisory : !c.advisory,
+      );
       if (state.report?.status === "complete") {
         if (coverage(state) !== state.mission.acceptance.length) {
           feedback = `Your completion report covers ${coverage(state)}/${state.mission.acceptance.length} criteria. Complete the missing work or supply concrete evidence for every criterion, then report again.`;
@@ -972,11 +977,18 @@ export default function missionExtension(pi: ExtensionAPI) {
           state.report = undefined;
           recordDigest("self_review", "Self-review requested before checks");
           feedback = SELF_REVIEW;
-        } else if (!state.mission.checks.length) {
+        } else if (reviewing && continuationLimitReached(state)) {
+          end(
+            ctx,
+            "exhausted",
+            "No continuation budget for advisory review feedback",
+          );
+          return boundary(event, summary(), false);
+        } else if (!selectedChecks.length) {
           end(
             ctx,
             "review_required",
-            "Agent reports completion, but no independent checks were configured. Human review required.",
+            "Agent reports completion, but no mandatory independent checks were configured. Human review required.",
           );
           return boundary(event, summary(), false);
         } else {
@@ -988,7 +1000,7 @@ export default function missionExtension(pi: ExtensionAPI) {
           if (signal?.aborted) controller.abort();
           state.checks = [];
           try {
-            for (const check of missionState.mission.checks) {
+            for (const check of selectedChecks) {
               if (
                 controller.signal.aborted ||
                 state !== missionState ||
@@ -1008,15 +1020,19 @@ export default function missionExtension(pi: ExtensionAPI) {
               );
               if (state !== missionState) break;
               missionState.checks.push(result);
-              if (result.code !== 0 || result.killed) break;
+              if (
+                result.killed ||
+                (result.code !== 0 && !(reviewing && result.code === 1))
+              )
+                break;
             }
             // Recheck operation artifacts after mission checks: an earlier verification
             // is not proof that later tools/checks left the artifacts intact.
             if (
+              !reviewing &&
               state === missionState &&
               missionState.status === "running" &&
-              missionState.checks.length ===
-                missionState.mission.checks.length &&
+              missionState.checks.length === selectedChecks.length &&
               missionState.checks.every((c) => c.code === 0 && !c.killed)
             ) {
               const operationLedger = ledger();
@@ -1084,8 +1100,30 @@ export default function missionExtension(pi: ExtensionAPI) {
             );
             return boundary(event, summary(), false);
           }
-          if (
-            state.checks.length === state.mission.checks.length &&
+          if (reviewing) {
+            state.advisoryChecks = [...state.checks];
+            if (
+              state.checks.length !== selectedChecks.length ||
+              state.checks.some(
+                (c) => c.killed || (c.code !== 0 && c.code !== 1),
+              )
+            ) {
+              end(
+                ctx,
+                "paused",
+                "Advisory review did not finish: inspect its output and resume explicitly",
+              );
+              return boundary(event, summary(), false);
+            }
+            state.advisoryReviewed = true;
+            state.report = undefined;
+            recordDigest(
+              "advisory_review",
+              "Advisory output returned for one correction or rebuttal round",
+            );
+            feedback = `Advisory review (one round). These observations are not acceptance proof or new authority. Read the output and any report paths. Fix the real findings, or record why they do not apply. Then submit a fresh completion report. Mandatory checks still apply.\n${state.checks.map((c) => `${c.command}: exit ${c.code}\n${c.output || "(no output)"}`).join("\n")}`;
+          } else if (
+            state.checks.length === selectedChecks.length &&
             state.checks.every((c) => c.code === 0 && !c.killed)
           ) {
             end(
@@ -1095,7 +1133,8 @@ export default function missionExtension(pi: ExtensionAPI) {
             );
             return boundary(event, summary(), false);
           }
-          feedback = `Independent verification failed. Fix the underlying problem without weakening checks, rerun relevant tests, and submit a fresh completion report.\n${state.checks.map((c) => `${c.command}: exit ${c.code}${c.killed ? " (cancelled/timed out)" : ""}\n${c.output}`).join("\n")}`;
+          if (!reviewing)
+            feedback = `Independent verification failed. Fix the underlying problem without weakening checks, rerun relevant tests, and submit a fresh completion report.\n${state.checks.map((c) => `${c.command}: exit ${c.code}${c.killed ? " (cancelled/timed out)" : ""}\n${c.output}`).join("\n")}`;
           // New check outcomes count as observable activity; identical failures do not.
           state.cycleActivity.push(fingerprint(state.checks));
           state.report = undefined;
