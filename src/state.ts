@@ -32,7 +32,11 @@ export interface Mission {
   operations: OperationDefinition[];
   acceptance: string[];
   constraints: string[];
-  checks: { command: string; timeoutSeconds?: number | null }[];
+  checks: {
+    command: string;
+    timeoutSeconds?: number | null;
+    advisory?: boolean;
+  }[];
   startupChecks: { command: string; timeoutSeconds?: number | null }[];
   limits: {
     maxMinutes: number | null;
@@ -89,6 +93,9 @@ export interface State {
   report?: Report;
   /** Set when the one-time deliverable self-review was requested. */
   selfReviewed?: boolean;
+  /** One advisory round per mission; mandatory checks still run afterwards. */
+  advisoryReviewed?: boolean;
+  advisoryChecks?: CheckResult[];
   checks: CheckResult[];
   wait?: WaitState;
   pendingWait?: WaitState;
@@ -158,7 +165,7 @@ export function approvalSummary(mission: Mission): string {
     checks
       .map(
         (c) =>
-          `${c.command} (timeout: ${c.timeoutSeconds === undefined ? (mission.limits.checkTimeoutSeconds ?? "none") : (c.timeoutSeconds ?? "none")} seconds)`,
+          `${c.command} (timeout: ${c.timeoutSeconds === undefined ? (mission.limits.checkTimeoutSeconds ?? "none") : (c.timeoutSeconds ?? "none")} seconds)${c.advisory ? " [advisory: one review round, not an acceptance gate]" : ""}`,
       )
       .join("\n") || "None";
   return [
@@ -225,7 +232,7 @@ export function parseMission(value: unknown): Mission {
   const selfReview = (policy as Record<string, unknown>).selfReview ?? true;
   if (typeof selfReview !== "boolean")
     throw new Error("policies.selfReview must be true or false");
-  const parseChecks = (rawChecks: unknown) => {
+  const parseChecks = (rawChecks: unknown, allowAdvisory = false) => {
     if (!Array.isArray(rawChecks) || rawChecks.length > 100)
       throw new Error("checks must be an array of at most 100 commands");
     return rawChecks.map((check, i) => {
@@ -234,10 +241,19 @@ export function parseMission(value: unknown): Mission {
       if (!check || typeof check !== "object" || Array.isArray(check))
         throw new Error(`checks[${i}] must be a string or command object`);
       for (const k of Object.keys(check))
-        if (!["command", "timeoutSeconds"].includes(k))
+        if (
+          ![
+            "command",
+            "timeoutSeconds",
+            ...(allowAdvisory ? ["advisory"] : []),
+          ].includes(k)
+        )
           throw new Error(`Unknown check field: ${k}`);
+      if (check.advisory !== undefined && typeof check.advisory !== "boolean")
+        throw new Error(`checks[${i}].advisory must be true or false`);
       return {
         command: strings([check.command], `checks[${i}].command`, true)[0],
+        ...(check.advisory === undefined ? {} : { advisory: check.advisory }),
         ...(check.timeoutSeconds === undefined
           ? {}
           : {
@@ -250,7 +266,7 @@ export function parseMission(value: unknown): Mission {
       };
     });
   };
-  const checks = parseChecks(v.checks ?? []);
+  const checks = parseChecks(v.checks ?? [], true);
   const startupChecks = parseChecks(v.startupChecks ?? []);
   const optionalText: {
     workspace?: string;

@@ -13,15 +13,18 @@ import { join } from "node:path";
 import { piEntry, aiEntry, root, definition } from "./helpers.mjs";
 
 // Actual AgentSession + extension loader + boundary processing; only model output is fake.
-for (const scenario of ["continue", "wait", "managed"]) {
-  const externalWait = scenario !== "continue";
+for (const scenario of ["continue", "wait", "managed", "advisory"]) {
+  const externalWait = scenario === "wait" || scenario === "managed";
   const managed = scenario === "managed";
+  const advisory = scenario === "advisory";
   test(
-    managed
-      ? "real Pi package loader executes managed launch → wait → reconcile → verify → completion"
-      : externalWait
-        ? "real Pi loop yields, wakes automatically from an external file, verifies, and settles"
-        : "real Pi loop continues a premature stop, executes mission_report, verifies, and settles",
+    advisory
+      ? "real Pi loop returns advisory findings once before mandatory completion"
+      : managed
+        ? "real Pi package loader executes managed launch → wait → reconcile → verify → completion"
+        : externalWait
+          ? "real Pi loop yields, wakes automatically from an external file, verifies, and settles"
+          : "real Pi loop continues a premature stop, executes mission_report, verifies, and settles",
     { timeout: 15000 },
     async (t) => {
       const dir = mkdtempSync(join(tmpdir(), "pi-mission-integration-"));
@@ -128,6 +131,7 @@ for (const scenario of ["continue", "wait", "managed"]) {
       };
       let requests = 0;
       let feedbackSeen = false;
+      let advisorySeen = false;
       runtime.streamSimple = () => {
         throw new Error("Provider access is forbidden in this offline test");
       };
@@ -139,9 +143,16 @@ for (const scenario of ["continue", "wait", "managed"]) {
           )
         )
           feedbackSeen = true;
-        if (requests > (managed ? 7 : externalWait ? 4 : 3))
+        if (
+          context.messages.some((m) =>
+            /Major: wrong source/.test(JSON.stringify(m)),
+          )
+        )
+          advisorySeen = true;
+        if (requests > (advisory ? 5 : managed ? 7 : externalWait ? 4 : 3))
           throw new Error("Unexpected extra model request");
-        const reportTurn = managed ? 6 : externalWait ? 3 : 2;
+        const reportTurn =
+          advisory && requests > 3 ? 4 : managed ? 6 : externalWait ? 3 : 2;
         const toolTurn = managed
           ? Boolean(managedCalls[requests]) || requests === reportTurn
           : requests === reportTurn || (externalWait && requests === 1);
@@ -252,7 +263,17 @@ for (const scenario of ["continue", "wait", "managed"]) {
                       },
                     ],
                   }
-                : {},
+                : advisory
+                  ? {
+                      checks: [
+                        {
+                          command: "printf 'Major: wrong source'; exit 1",
+                          advisory: true,
+                        },
+                        "printf verified",
+                      ],
+                    }
+                  : {},
           ),
         ),
       );
@@ -303,11 +324,20 @@ for (const scenario of ["continue", "wait", "managed"]) {
         )
         .at(-1).data;
       assert.deepEqual(extensionErrors, []);
-      assert.equal(requests, managed ? 7 : externalWait ? 4 : 3);
+      assert.equal(requests, advisory ? 5 : managed ? 7 : externalWait ? 4 : 3);
       assert.equal(feedbackSeen, true);
       assert.equal(saved.status, "completed");
-      assert.equal(saved.continuations, 1);
-      assert.equal(saved.turns, managed ? 7 : externalWait ? 4 : 3);
+      assert.equal(saved.continuations, advisory ? 2 : 1);
+      assert.equal(
+        saved.turns,
+        advisory ? 5 : managed ? 7 : externalWait ? 4 : 3,
+      );
+      if (advisory) {
+        assert.equal(advisorySeen, true);
+        assert.equal(saved.advisoryReviewed, true);
+        assert.equal(saved.advisoryChecks.length, 1);
+        assert.equal(saved.advisoryChecks[0].code, 1);
+      }
       if (managed) {
         const records = JSON.parse(
           readFileSync(join(dir, ".pi/mission-operations.json")),

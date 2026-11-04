@@ -177,6 +177,12 @@ export function publishProgress(
         `- ${r.key}: ${r.status}; attempt ${r.attempts.at(-1)!.id}; remote ID ${r.attempts.at(-1)!.operationId || "unknown"}; ${r.verification ? "outcome verified (fresh reconciliation required after recovery)" : "not verified"}`,
     ),
     "",
+    "## Advisory review (not acceptance proof)",
+    ...(s.advisoryChecks || []).map(
+      (c) =>
+        `- ${c.command}: exit ${c.code}\n\n\`\`\`text\n${c.output}\n\`\`\``,
+    ),
+    "",
     "## Latest verification",
     ...s.checks.map(
       (c) =>

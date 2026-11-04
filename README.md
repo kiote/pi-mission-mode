@@ -107,9 +107,10 @@ The agent uses `mission_report` with `progress`, `complete`, or `blocked`:
 
 - Completion needs evidence for every **1-based** acceptance criterion.
 - Any later tool call invalidates a complete report.
-- The extension runs configured checks sequentially; actual failures feed another turn.
+- The extension runs mandatory checks sequentially; actual failures feed another turn.
+- A completion check with `"advisory": true` runs once before mandatory verification. Its output returns for correction or rebuttal, including on exit 0. Review errors pause the mission. See [advisory reviews](docs/mission-format.md#advisory-reviews).
 - `significant: true` adds a digest; `nextAction` records the follow-up plan.
-- No checks means human review, **not automatic success**.
+- No mandatory checks means human review, **not automatic success**. Advisory findings alone cannot approve completion.
 
 Checks execute independently of the agent's claim, but acceptance evidence is still self-reported. Tests passing is not a guarantee of semantic correctness, evaluation integrity, or the actual business outcome.
 
